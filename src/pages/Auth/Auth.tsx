@@ -4,8 +4,22 @@ import { authClasses } from "./authClasses";
 import { useForm } from "react-hook-form";
 import { AuthForm, authFormSchema } from "../../models/Form";
 
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
+import { auth, db } from "../../firebase/firebase";
+import { setDoc, doc } from "firebase/firestore";
+import { useAppDispatch } from "../../hooks/storeHook";
+import { login } from "../../features/authSlice";
+
 const Auth = () => {
   const [authType, setAuthType] = useState<"login" | "sign-up">("login");
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<null | string>(null);
+
+  const dispatch = useAppDispatch();
+
   const {
     container,
     form,
@@ -18,8 +32,49 @@ const Auth = () => {
     forgotPasswordButton,
   } = authClasses;
 
-  const handleFormSubmit = (data: AuthForm) => {
-    console.log(data);
+  const handleFormSubmit = async (data: AuthForm) => {
+    setErrorMessage(null);
+    setLoading(true);
+
+    const { email, password } = data;
+    if (authType === "sign-up") {
+      try {
+        const { user } = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        console.log(user);
+
+        await setDoc(doc(db, "users", user.uid), { email });
+        setLoading(false);
+
+        if (user && user.email)
+          dispatch(
+            login({
+              email: user.email,
+              id: user.uid,
+              photoUrl: user.photoURL || null,
+            })
+          );
+      } catch (error: any) {
+        setLoading(false);
+        const errorCode = error.code;
+        setErrorMessage(errorCode);
+      }
+    } else {
+      //Sign in
+      const { user } = await signInWithEmailAndPassword(auth, email, password);
+      setLoading(false);
+      if (user && user.email)
+        dispatch(
+          login({
+            email: user.email,
+            id: user.uid,
+            photoUrl: user.photoURL || null,
+          })
+        );
+    }
   };
 
   const handleAuthType = () => {
@@ -37,6 +92,11 @@ const Auth = () => {
   return (
     <div className={container}>
       <div className="w-full max-w-sm rounded-lg bg-slate-700/30 shadow">
+        {errorMessage && (
+          <p className="bg-red-400 px-3 py-2 text-center rounded-md text-white">
+            {errorMessage}
+          </p>
+        )}
         <form onSubmit={handleSubmit(handleFormSubmit)} className={form}>
           <div className="grid gap-y-3">
             <button className={button} type="button">
@@ -89,7 +149,7 @@ const Auth = () => {
                 <></>
               )}
             </div>
-            <button className={button}>
+            <button disabled={loading} className={button}>
               Sign {authType === "login" ? "in" : "up"} with Email
             </button>
           </div>
